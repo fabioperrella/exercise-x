@@ -14,8 +14,6 @@ class Provider
   def deliver(phone:, message:)
     values = {phone: phone, message: message}
 
-    # puts "delivering: #{self.inspect}"
-
     if @method == :get
       @http_client.send(@method, @url % values)
     else
@@ -33,9 +31,10 @@ end
 class DeliveryStrategy
   NoProvidersToPick = Class.new(StandardError)
 
-  def initialize(default_provider: nil)
+  def initialize(default_provider: nil, default_provider_retries: 1)
     @providers_by_prefix = { }
     @default_provider = default_provider
+    @default_provider_retries = default_provider_retries
   end
 
   def add(prefix:, provider:, retries: 1)
@@ -46,14 +45,32 @@ class DeliveryStrategy
     end
   end
 
+  # Providers are added to @providers_by_prefix[prefix] according to their number
+  # of retries. As an example for the following case:
+  # - 1st provider for prefix 61 is KPN, with 1 retry only
+  # - 2nd provider for prefix 61 is ZIGO, with 2 retries
+  # - the default provider is XYZ with 2 retries
+  #
+  # @providers_by_prefix will be:
+  #
+  # @providers_by_prefix = {
+  #   '61': [ kpn, zigo, zigo, xyz, xyz]
+  # }
   def select_provider(phone:, attempt: 1)
     prefix = phone[0..1]
     return @default_provider unless @providers_by_prefix.has_key?(prefix)
 
-    # TODO: there is no way to set retries for the default provider
-    raise NoProvidersToPick if attempt > @providers_by_prefix[prefix].size + 1
+    # non default providers
+    if attempt <= @providers_by_prefix[prefix].size
+      return @providers_by_prefix[prefix][attempt-1]
+    end
 
-    @providers_by_prefix[prefix][attempt-1] || @default_provider
+    # default provider
+    if attempt - @providers_by_prefix[prefix].size <= @default_provider_retries
+      return @default_provider
+    end
+
+    raise NoProvidersToPick
   end
 end
 
@@ -211,6 +228,26 @@ describe DeliveryStrategy do
 
     provider2 = deliver_strategy.select_provider(phone: '6133232', attempt: 2)
     expect(provider2).to eq(kpn)
+  end
+
+  it 'respect default_provider_retries when the default provider is used' do
+    # setup
+    deliver_strategy = DeliveryStrategy.new(default_provider: kpn, default_provider_retries: 2)
+    deliver_strategy.add(prefix: '61', provider: zigo, retries: 1)
+
+    # exercise
+    provider1 = deliver_strategy.select_provider(phone: '6133232')
+    expect(provider1).to eq(zigo)
+
+    provider2 = deliver_strategy.select_provider(phone: '6133232', attempt: 2)
+    expect(provider2).to eq(kpn)
+
+    provider3 = deliver_strategy.select_provider(phone: '6133232', attempt: 3)
+    expect(provider3).to eq(kpn)
+
+    expect do
+      deliver_strategy.select_provider(phone: '6133232', attempt: 4)
+    end.to raise_error(DeliveryStrategy::NoProvidersToPick)
   end
 end
 

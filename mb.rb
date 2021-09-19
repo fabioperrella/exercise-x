@@ -12,7 +12,7 @@ class Provider
   end
 
   def deliver(phone:, message:)
-    values = {phone: phone, message: message}
+    values = { phone: phone, message: message }
 
     if @method == :get
       @http_client.send(@method, @url % values)
@@ -32,7 +32,7 @@ class DeliveryStrategy
   NoProvidersToPick = Class.new(StandardError)
 
   def initialize(default_provider: nil, default_provider_retries: 1)
-    @providers_by_prefix = { }
+    @providers_by_prefix = {}
     @default_provider = default_provider
     @default_provider_retries = default_provider_retries
   end
@@ -61,28 +61,24 @@ class DeliveryStrategy
     return @default_provider unless @providers_by_prefix.has_key?(prefix)
 
     # non default providers
-    if attempt <= @providers_by_prefix[prefix].size
-      return @providers_by_prefix[prefix][attempt-1]
-    end
+    return @providers_by_prefix[prefix][attempt - 1] if attempt <= @providers_by_prefix[prefix].size
 
     # default provider
-    if attempt - @providers_by_prefix[prefix].size <= @default_provider_retries
-      return @default_provider
-    end
+    return @default_provider if attempt - @providers_by_prefix[prefix].size <= @default_provider_retries
 
     raise NoProvidersToPick
   end
 end
 
 class SmsGateway
-  def initialize(deliver_strategy: nil, http_client:)
+  def initialize(http_client:, deliver_strategy: nil)
     @deliver_strategy = deliver_strategy || default_strategy(http_client: http_client)
   end
 
   def deliver(phone:, message:, provider: nil, attempt: 1)
-    provider = provider || @deliver_strategy.select_provider(phone: phone)
+    provider ||= @deliver_strategy.select_provider(phone: phone)
     provider.deliver(phone: phone, message: message)
-  rescue => e
+  rescue StandardError => e
     next_attempt = attempt + 1
     next_provider = @deliver_strategy.select_provider(phone: phone, attempt: next_attempt)
 
@@ -95,21 +91,21 @@ class SmsGateway
     zigo = Provider.new(
       name: 'zigo',
       method: :get,
-      url: "http://url1/?phone=%{phone}&message=%{message}",
+      url: 'http://url1/?phone=%{phone}&message=%{message}',
       http_client: http_client
     )
 
     kpn = Provider.new(
       name: 'kpn',
       method: :get,
-      url: "http://url2/%{phone}?message=%{message}",
+      url: 'http://url2/%{phone}?message=%{message}',
       http_client: http_client
     )
 
     post_provider = Provider.new(
       name: 'post provider',
       method: :post,
-      url: "http://url3",
+      url: 'http://url3',
       payload: { msg: :message, phone: :phone },
       http_client: http_client
     )
@@ -137,7 +133,7 @@ describe SmsGateway do
     zigo = Provider.new(
       name: 'zigo',
       method: :get,
-      url: "http://example.com/url1/%{number}",
+      url: 'http://example.com/url1/%{number}',
       http_client: fake_http_client
     )
 
@@ -163,7 +159,7 @@ describe DeliveryStrategy do
     Provider.new(
       name: 'zigo',
       method: :get,
-      url: "http://example.com/url1/%{number}",
+      url: 'http://example.com/url1/%{number}',
       http_client: fake_http_client
     )
   end
@@ -172,7 +168,7 @@ describe DeliveryStrategy do
     Provider.new(
       name: 'kpn',
       method: :get,
-      url: "http://example.com/url1/%{number}",
+      url: 'http://example.com/url1/%{number}',
       http_client: fake_http_client
     )
   end
@@ -261,7 +257,7 @@ describe Provider do
       fake_provider = Provider.new(
         name: 'fake',
         method: 'get',
-        url: "http://example.com/send?phone=%{phone}&msg=%{message}",
+        url: 'http://example.com/send?phone=%{phone}&msg=%{message}',
         http_client: http_client
       )
 
@@ -271,7 +267,7 @@ describe Provider do
       # verify
       expect(http_client)
         .to have_received(:get)
-        .with("http://example.com/send?phone=212&msg=aaa")
+        .with('http://example.com/send?phone=212&msg=aaa')
     end
   end
 
@@ -280,7 +276,7 @@ describe Provider do
       fake_provider = Provider.new(
         name: 'fake',
         method: 'post',
-        url: "http://example.com/deliver",
+        url: 'http://example.com/deliver',
         payload: {
           phone_number: :phone,
           msg: :message
@@ -294,7 +290,7 @@ describe Provider do
       # verify
       expect(fake_http_client)
         .to have_received(:post)
-        .with("http://example.com/deliver", {phone_number: '212', msg: 'aaa'})
+        .with('http://example.com/deliver', { phone_number: '212', msg: 'aaa' })
     end
   end
 end
@@ -307,22 +303,22 @@ describe 'Integration tests' do
 
     expect(fake_http_client)
       .to receive(:get)
-      .with("http://url1/?phone=61123&message=aaa")
+      .with('http://url1/?phone=61123&message=aaa')
       .and_raise('any error')
 
     expect(fake_http_client)
       .to receive(:get)
-      .with("http://url2/61123?message=aaa")
+      .with('http://url2/61123?message=aaa')
       .and_raise('any error')
 
     expect(fake_http_client)
       .to receive(:get)
-      .with("http://url2/61123?message=aaa")
+      .with('http://url2/61123?message=aaa')
       .and_raise('other error')
 
     expect(fake_http_client)
       .to receive(:post)
-      .with("http://url3", {msg: 'aaa', phone: '61123'})
+      .with('http://url3', { msg: 'aaa', phone: '61123' })
       .and_raise('last error')
 
     # exercise
@@ -336,25 +332,25 @@ describe 'Integration tests' do
 
     expect(fake_http_client)
       .to receive(:get)
-      .with("http://url1/?phone=51123&message=aaa")
+      .with('http://url1/?phone=51123&message=aaa')
       .and_raise('any error')
 
     # 1st attempt
     expect(fake_http_client)
       .to receive(:post)
-      .with("http://url3", {msg: 'aaa', phone: '51123'})
+      .with('http://url3', { msg: 'aaa', phone: '51123' })
       .and_raise('other error')
 
     # 2nd attempt
     expect(fake_http_client)
       .to receive(:post)
-      .with("http://url3", {msg: 'aaa', phone: '51123'})
+      .with('http://url3', { msg: 'aaa', phone: '51123' })
       .and_raise('other error')
 
     # default provider
     expect(fake_http_client)
       .to receive(:post)
-      .with("http://url3", {msg: 'aaa', phone: '51123'})
+      .with('http://url3', { msg: 'aaa', phone: '51123' })
       .and_raise('last error')
 
     # exercise
@@ -368,7 +364,7 @@ describe 'Integration tests' do
 
     expect(fake_http_client)
       .to receive(:post)
-      .with("http://url3", {msg: 'aaa', phone: '91123'})
+      .with('http://url3', { msg: 'aaa', phone: '91123' })
       .and_return(:ok)
 
     # exercise
